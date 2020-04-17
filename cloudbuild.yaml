@@ -2,15 +2,23 @@ steps:
   - id: yarn-install
     waitFor: ["-"]
     name: node:12.15
+    env:
+      - PUPPETEER_SKIP_DOWNLOAD=true
     args: ["yarn"]
 
-  - id: rm-chrome
-    waitFor: ["yarn-install"]
+  - id: download-chrome
+    waitFor: ["-"]
     name: node:12.15
-    args: ["rm", "-rf", "/workspace/.local-chromium/linux-737027"]
+    args:
+      [
+        "curl",
+        "https://storage.googleapis.com/chromium-browser-snapshots/Linux_x64/737027/chrome-linux.zip",
+        "-o",
+        "chrome-linux.zip",
+      ]
 
   - id: puppeteer-install
-    waitFor: ["rm-chrome"]
+    waitFor: ["yarn-install"]
     name: node:12.15
     env:
       - DEBUG=*
