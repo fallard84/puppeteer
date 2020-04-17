@@ -3,5 +3,5 @@ steps:
     waitFor: ["-"]
     name: node:12.15
     env:
-      - PUPPETEER_DOWNLOAD_HOST=https://storage.cloud.google.com/braethe-sandbox-shared-cache-0001
+      - PUPPETEER_DOWNLOAD_HOST=https://storage.googleapis.com/braethe-sandbox-shared-cache-0001
     args: ["yarn"]
