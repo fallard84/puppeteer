@@ -147,9 +147,9 @@ class Helper {
     return typeof obj === 'number' || obj instanceof Number;
   }
 
-  static async waitForEvent(emitter: NodeJS.EventEmitter, eventName: string|symbol, predicate: (event: unknown) => boolean, timeout: number, abortPromise: Promise<Error>): Promise<unknown> {
+  static async waitForEvent<T extends any>(emitter: NodeJS.EventEmitter, eventName: string|symbol, predicate: (event: T) => boolean, timeout: number, abortPromise: Promise<Error>): Promise<T> {
     let eventTimeout, resolveCallback, rejectCallback;
-    const promise = new Promise<unknown>((resolve, reject) => {
+    const promise = new Promise<T>((resolve, reject) => {
       resolveCallback = resolve;
       rejectCallback = reject;
     });
@@ -232,9 +232,11 @@ class Helper {
       return resultBuffer;
     }
   }
+
+  static promisify = promisify;
 }
 
-module.exports = {
+export = {
   helper: Helper,
   assert,
   debugError
