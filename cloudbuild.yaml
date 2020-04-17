@@ -1,0 +1,12 @@
+steps:
+  - id: yarn-install
+    waitFor: ["-"]
+    name: node:12.15
+    args: ["yarn"]
+
+  - id: puppeteer-install
+    waitFor: ["yarn-install"]
+    name: node:12.15
+    env:
+      - DEBUG=*
+    args: ["node", "install.js"]
