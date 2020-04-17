@@ -3,5 +3,13 @@ steps:
     waitFor: ["-"]
     name: node:12.15
     env:
-      - PUPPETEER_DOWNLOAD_HOST=https://storage.googleapis.com/braethe-sandbox-shared-cache-0001
+      - PUPPETEER_SKIP_DOWNLOAD=true
     args: ["yarn"]
+
+  - id: puppeteer-install
+    waitFor: ["yarn-install"]
+    name: node:12.15
+    env:
+      - DEBUG=*
+      - PUPPETEER_DOWNLOAD_HOST=https://storage.googleapis.com/braethe-sandbox-shared-cache-0001
+    args: ["node", "install.js"]
