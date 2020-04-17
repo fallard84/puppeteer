@@ -4,8 +4,13 @@ steps:
     name: node:12.15
     args: ["yarn"]
 
-  - id: puppeteer-install
+  - id: rm-chrome
     waitFor: ["yarn-install"]
+    name: node:12.15
+    args: ["rm", "-rf", "/workspace/.local-chromium/linux-737027"]
+
+  - id: puppeteer-install
+    waitFor: ["rm-chrome"]
     name: node:12.15
     env:
       - DEBUG=*
