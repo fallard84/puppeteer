@@ -3,24 +3,5 @@ steps:
     waitFor: ["-"]
     name: node:12.15
     env:
-      - PUPPETEER_SKIP_DOWNLOAD=true
-    args: ["yarn"]
-
-  - id: download-chrome
-    waitFor: ["-"]
-    name: node:12.15
-    args:
-      [
-        "curl",
-        "https://storage.googleapis.com/chromium-browser-snapshots/Linux_x64/737027/chrome-linux.zip",
-        "-o",
-        "chrome-linux.zip",
-      ]
-
-  - id: puppeteer-install
-    waitFor: ["yarn-install"]
-    name: node:12.15
-    env:
-      - DEBUG=*
       - PUPPETEER_DOWNLOAD_HOST=https://storage.cloud.google.com/braethe-sandbox-shared-cache-0001
-    args: ["node", "install.js"]
+    args: ["yarn"]
