@@ -13,9 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const {TimeoutError} = require('./Errors');
-const debugError = require('debug')(`puppeteer:error`);
-const fs = require('fs');
+import Errors = require('./Errors');
+
+import debug = require('debug');
+const debugError = debug('puppeteer:error');
+import fs = require('fs');
+import util = require('util');
+
+const {TimeoutError} = Errors;
+// TODO: does Browserify take this happily?
+const {promisify} = util;
+
+const openAsync = promisify(fs.open);
+const writeAsync = promisify(fs.write);
+const closeAsync = promisify(fs.close);
+
+function assert(value: unknown, message?: string): void {
+  if (!value)
+    throw new Error(message);
+}
+
+interface AnyClass {
+  prototype: object;
+}
+
 
 class Helper {
   /**
@@ -23,29 +44,22 @@ class Helper {
    * @param {!Array<*>} args
    * @return {string}
    */
-  static evaluationString(fun, ...args) {
+  static evaluationString(fun: Function | string, ...args: unknown[]): string {
     if (Helper.isString(fun)) {
       assert(args.length === 0, 'Cannot evaluate a string with arguments');
-      return /** @type {string} */ (fun);
+      return fun;
     }
-    return `(${fun})(${args.map(serializeArgument).join(',')})`;
 
-    /**
-     * @param {*} arg
-     * @return {string}
-     */
-    function serializeArgument(arg) {
+    function serializeArgument(arg: unknown): string {
       if (Object.is(arg, undefined))
         return 'undefined';
       return JSON.stringify(arg);
     }
+
+    return `(${fun})(${args.map(serializeArgument).join(',')})`;
   }
 
-  /**
-   * @param {!Protocol.Runtime.ExceptionDetails} exceptionDetails
-   * @return {string}
-   */
-  static getExceptionMessage(exceptionDetails) {
+  static getExceptionMessage(exceptionDetails: Protocol.Runtime.ExceptionDetails): string {
     if (exceptionDetails.exception)
       return exceptionDetails.exception.description || exceptionDetails.exception.value;
     let message = exceptionDetails.text;
@@ -59,11 +73,7 @@ class Helper {
     return message;
   }
 
-  /**
-   * @param {!Protocol.Runtime.RemoteObject} remoteObject
-   * @return {*}
-   */
-  static valueFromRemoteObject(remoteObject) {
+  static valueFromRemoteObject(remoteObject: Protocol.Runtime.RemoteObject): unknown {
     assert(!remoteObject.objectId, 'Cannot extract value when objectId is given');
     if (remoteObject.unserializableValue) {
       if (remoteObject.type === 'bigint' && typeof BigInt !== 'undefined')
@@ -84,11 +94,7 @@ class Helper {
     return remoteObject.value;
   }
 
-  /**
-   * @param {!Puppeteer.CDPSession} client
-   * @param {!Protocol.Runtime.RemoteObject} remoteObject
-   */
-  static async releaseObject(client, remoteObject) {
+  static async releaseObject(client: Puppeteer.CDPSession, remoteObject: Protocol.Runtime.RemoteObject): Promise<void> {
     if (!remoteObject.objectId)
       return;
     await client.send('Runtime.releaseObject', {objectId: remoteObject.objectId}).catch(error => {
@@ -98,16 +104,15 @@ class Helper {
     });
   }
 
-  /**
-   * @param {!Object} classType
-   */
-  static installAsyncStackHooks(classType) {
+  static installAsyncStackHooks(classType: AnyClass): void {
     for (const methodName of Reflect.ownKeys(classType.prototype)) {
       const method = Reflect.get(classType.prototype, methodName);
       if (methodName === 'constructor' || typeof methodName !== 'string' || methodName.startsWith('_') || typeof method !== 'function' || method.constructor.name !== 'AsyncFunction')
         continue;
       Reflect.set(classType.prototype, methodName, function(...args) {
-        const syncStack = {};
+        const syncStack = {
+          stack: ''
+        };
         Error.captureStackTrace(syncStack);
         return method.call(this, ...args).catch(e => {
           const stack = syncStack.stack.substring(syncStack.stack.indexOf('\n') + 1);
@@ -120,13 +125,7 @@ class Helper {
     }
   }
 
-  /**
-   * @param {!NodeJS.EventEmitter} emitter
-   * @param {(string|symbol)} eventName
-   * @param {function(?):void} handler
-   * @return {{emitter: !NodeJS.EventEmitter, eventName: (string|symbol), handler: function(?)}}
-   */
-  static addEventListener(emitter, eventName, handler) {
+  static addEventListener(emitter: NodeJS.EventEmitter, eventName: string|symbol, handler: (...args: any[]) => void): { emitter: NodeJS.EventEmitter; eventName: string|symbol; handler: (...args: any[]) => void} {
     emitter.on(eventName, handler);
     return { emitter, eventName, handler };
   }
@@ -134,59 +133,23 @@ class Helper {
   /**
    * @param {!Array<{emitter: !NodeJS.EventEmitter, eventName: (string|symbol), handler: function(?):void}>} listeners
    */
-  static removeEventListeners(listeners) {
+  static removeEventListeners(listeners: Array<{emitter: NodeJS.EventEmitter; eventName: string|symbol; handler: (...args: any[]) => void}>): void {
     for (const listener of listeners)
       listener.emitter.removeListener(listener.eventName, listener.handler);
     listeners.length = 0;
   }
 
-  /**
-   * @param {!Object} obj
-   * @return {boolean}
-   */
-  static isString(obj) {
+  static isString(obj: unknown): obj is string {
     return typeof obj === 'string' || obj instanceof String;
   }
 
-  /**
-   * @param {!Object} obj
-   * @return {boolean}
-   */
-  static isNumber(obj) {
+  static isNumber(obj: unknown): obj is number {
     return typeof obj === 'number' || obj instanceof Number;
   }
 
-  /**
-   * @param {function} nodeFunction
-   * @return {function}
-   */
-  static promisify(nodeFunction) {
-    function promisified(...args) {
-      return new Promise((resolve, reject) => {
-        function callback(err, ...result) {
-          if (err)
-            return reject(err);
-          if (result.length === 1)
-            return resolve(result[0]);
-          return resolve(result);
-        }
-        nodeFunction.call(null, ...args, callback);
-      });
-    }
-    return promisified;
-  }
-
-  /**
-   * @param {!NodeJS.EventEmitter} emitter
-   * @param {(string|symbol)} eventName
-   * @param {function} predicate
-   * @param {number} timeout
-   * @param {!Promise<!Error>} abortPromise
-   * @return {!Promise}
-   */
-  static async waitForEvent(emitter, eventName, predicate, timeout, abortPromise) {
+  static async waitForEvent(emitter: NodeJS.EventEmitter, eventName: string|symbol, predicate: (event: unknown) => boolean, timeout: number, abortPromise: Promise<Error>): Promise<unknown> {
     let eventTimeout, resolveCallback, rejectCallback;
-    const promise = new Promise((resolve, reject) => {
+    const promise = new Promise<unknown>((resolve, reject) => {
       resolveCallback = resolve;
       rejectCallback = reject;
     });
@@ -200,7 +163,7 @@ class Helper {
         rejectCallback(new TimeoutError('Timeout exceeded while waiting for event'));
       }, timeout);
     }
-    function cleanup() {
+    function cleanup(): void {
       Helper.removeEventListeners([listener]);
       clearTimeout(eventTimeout);
     }
@@ -213,6 +176,7 @@ class Helper {
     });
     if (result instanceof Error)
       throw result;
+
     return result;
   }
 
@@ -223,10 +187,10 @@ class Helper {
    * @param {number} timeout
    * @return {!Promise<T>}
    */
-  static async waitWithTimeout(promise, taskName, timeout) {
+  static async waitWithTimeout<T extends any>(promise: Promise<T>, taskName: string, timeout: number): Promise<T> {
     let reject;
     const timeoutError = new TimeoutError(`waiting for ${taskName} failed: timeout ${timeout}ms exceeded`);
-    const timeoutPromise = new Promise((resolve, x) => reject = x);
+    const timeoutPromise = new Promise<T>((resolve, x) => reject = x);
     let timeoutTimer = null;
     if (timeout)
       timeoutTimer = setTimeout(() => reject(timeoutError), timeout);
@@ -244,7 +208,7 @@ class Helper {
    * @param {?string} path
    * @return {!Promise<!Buffer>}
    */
-  static async readProtocolStream(client, handle, path) {
+  static async readProtocolStream(client: Puppeteer.CDPSession, handle: string, path?: string): Promise<Buffer> {
     let eof = false;
     let file;
     if (path)
@@ -268,19 +232,6 @@ class Helper {
       return resultBuffer;
     }
   }
-}
-
-const openAsync = Helper.promisify(fs.open);
-const writeAsync = Helper.promisify(fs.write);
-const closeAsync = Helper.promisify(fs.close);
-
-/**
- * @param {*} value
- * @param {string=} message
- */
-function assert(value, message) {
-  if (!value)
-    throw new Error(message);
 }
 
 module.exports = {
